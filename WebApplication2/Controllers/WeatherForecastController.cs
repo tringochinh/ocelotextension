@@ -27,7 +27,7 @@ namespace WebApplication2.Controllers
         [Route("dev")]
         public string Get1()
         {
-            return "Moi truong phat trien";
+            return "Moi truong phat trien - default";
         }
 
         [HttpGet]
