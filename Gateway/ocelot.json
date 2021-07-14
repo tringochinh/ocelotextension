@@ -1,0 +1,60 @@
+﻿{
+  "Routes": [
+    {
+      "DownstreamPathTemplateExtension": [
+        {
+          "Key": "Key1",
+          "Path": "/WeatherForecast/dev"
+        },
+        {
+          "Key": "Key2",
+          "Path": "/WeatherForecast/prod"
+        }
+      ],
+      "DownstreamHostAndPortsExtension": [
+        {
+          "Key": "Key1",
+          "Host": "localhost",
+          "Port": "44308"
+        },
+        {
+          "Key": "Key1",
+          "Host": "localhost",
+          "Port": "44309"
+        },
+        {
+          "Key": "Key2",
+          "Host": "localhost",
+          "Port": "44364"
+        },
+        {
+          "Key": "Key2",
+          "Host": "localhost",
+          "Port": "44365"
+        }
+      ],
+      "DownstreamPathTemplate": "/WeatherForecast/test",
+      "DownstreamScheme": "https",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": "44308"
+        }
+      ],
+      "UpstreamPathTemplate": "/getdata",
+      "UpstreamHttpMethod": [ "GET", "POST" ]
+    },
+    {
+      "DownstreamPathTemplate": "/WeatherForecast/dev",
+      "DownstreamScheme": "https",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": "44308"
+        }
+      ],
+      "UpstreamPathTemplate": "/getdata2",
+      "UpstreamHttpMethod": [ "GET" ]
+    }
+  ]
+}
