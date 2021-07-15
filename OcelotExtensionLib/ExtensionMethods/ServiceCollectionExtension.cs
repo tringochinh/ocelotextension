@@ -3,8 +3,8 @@
     using AutoMapper;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.DependencyInjection.Extensions;
+    using OcelotExtensionLib.Caches;
     using OcelotExtensionLib.Extensions;
-    using OcelotExtensionLib.Handlers;
     using OcelotExtensionLib.Mappers;
 
     public static class ServiceCollectionExtension
@@ -18,7 +18,8 @@
                 mc.AddProfile(new MappingProfile());
             });
             IMapper mapper = mapperConfig.CreateMapper();
-            services.AddSingleton(mapper);
+            services.AddSingleton(mapper); 
+            services.TryAddSingleton<IDictionaryCache, DictionaryCache>();
         }
     }
 }

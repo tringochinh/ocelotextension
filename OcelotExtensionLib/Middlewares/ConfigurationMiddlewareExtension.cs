@@ -2,7 +2,9 @@
 {
     using AutoMapper;
     using Microsoft.AspNetCore.Http;
+    using Microsoft.Extensions.Caching.Distributed;
     using Microsoft.Extensions.DependencyInjection;
+    using Newtonsoft.Json;
     using Ocelot.Configuration;
     using Ocelot.Configuration.Creator;
     using Ocelot.Configuration.File;
@@ -12,9 +14,11 @@
     using Ocelot.Logging;
     using Ocelot.Middleware;
     using Ocelot.Responses;
+    using OcelotExtensionLib.Caches;
     using OcelotExtensionLib.Extensions;
     using OcelotExtensionLib.Handlers;
     using System.Linq;
+    using System.Text;
     using System.Threading.Tasks;
 
     public class ConfigurationMiddlewareExtension : OcelotMiddleware
@@ -25,13 +29,15 @@
         private readonly IUpstreamTemplatePatternCreator _upstreamTemplatePatternCreator;
         private readonly IDownstreamExtensionHandler _downstreamExtensionHandler;
         private readonly IInternalConfigurationRepository _configRepo;
+        private readonly IDictionaryCache _cache;
         public ConfigurationMiddlewareExtension(
             RequestDelegate next, IOcelotLoggerFactory loggerFactory,
             IMapper mapper,
             IUrlPathToUrlTemplateMatcher urlMatcher,
             IUpstreamTemplatePatternCreator upstreamTemplatePatternCreator,
             IDownstreamExtensionHandler downstreamExtensionHandler,
-            IInternalConfigurationRepository configRepo)
+            IInternalConfigurationRepository configRepo,
+            IDictionaryCache cache)
             : base(loggerFactory.CreateLogger<ExceptionHandlerMiddleware>())
         {
             _next = next;
@@ -40,6 +46,7 @@
             _upstreamTemplatePatternCreator = upstreamTemplatePatternCreator;
             _downstreamExtensionHandler = downstreamExtensionHandler;
             _configRepo = configRepo;
+            _cache = cache;
         }
 
         private async Task<FileConfigurationExtension> GetDataConfig(HttpContext httpContext)
@@ -78,6 +85,52 @@
             return false;
         }
 
+        private async Task<Response<IInternalConfiguration>> GetConfigInternalAsync(
+            FileRouteExtension route, string key, HttpContext httpContext, FileConfigurationExtension dataConfig)
+        {
+            //Get from cache
+            var cached = await GetCacheAsync(key);
+            if(cached != null)
+            {
+                return cached;
+            }
+            //Tinh toan de get config
+            var downstreamRouteExt = route.DownstreamPathTemplateExtension;
+            var hostportExt = route.DownstreamHostAndPortsExtension;
+            route.DownstreamHostAndPorts.RemoveAll(r => true);
+            var listPath = downstreamRouteExt.Where(r => r.Key == key).ToList();
+            var listHostPort = hostportExt.Where(r => r.Key == key).ToList();
+            if (listPath.Any() && listHostPort.Any())
+            {
+                var path = listPath.FirstOrDefault();
+                route.DownstreamPathTemplate = path.Path;
+                foreach (var hp in listHostPort)
+                {
+                    var tmp = new FileHostAndPort();
+                    tmp.Host = hp.Host;
+                    tmp.Port = hp.Port;
+                    route.DownstreamHostAndPorts.Add(tmp);
+                }
+            }
+            //Tao config
+            var dataConfigMapped = this._mapper.Map<FileConfigurationExtension, FileConfiguration>(dataConfig);
+            var internalConfigurationCreator = httpContext.RequestServices.GetRequiredService<IInternalConfigurationCreator>();
+            var internalConfiguration = await internalConfigurationCreator.Create(dataConfigMapped);
+            //=========================================================================
+            await SetCacheAsync(key, internalConfiguration);
+            //=========================================================================
+            return internalConfiguration;
+        }
+        private async Task<Response<IInternalConfiguration>> SetCacheAsync(string key, Response<IInternalConfiguration> item)
+        {
+           return await _cache.SetCache(key, item);
+        }
+
+        private async Task<Response<IInternalConfiguration>> GetCacheAsync(string key)
+        {
+            return await _cache.GetCache(key);
+        }
+
         private async Task<Response<IInternalConfiguration>> GetExtension(HttpContext httpContext)
         {
             var config = _configRepo.Get();
@@ -91,28 +144,7 @@
 
                 if (!string.IsNullOrEmpty(key))
                 {
-                    var downstreamRouteExt = route.DownstreamPathTemplateExtension;
-                    var hostportExt = route.DownstreamHostAndPortsExtension;
-                    route.DownstreamHostAndPorts.RemoveAll(r => true);
-                    var listPath = downstreamRouteExt.Where(r => r.Key == key).ToList();
-                    var listHostPort = hostportExt.Where(r => r.Key == key).ToList();
-                    if (listPath.Any() && listHostPort.Any())
-                    {
-                        var path = listPath.FirstOrDefault();
-                        route.DownstreamPathTemplate = path.Path;
-                        foreach (var hp in listHostPort)
-                        {
-                            var tmp = new FileHostAndPort();
-                            tmp.Host = hp.Host;
-                            tmp.Port = hp.Port;
-                            route.DownstreamHostAndPorts.Add(tmp);
-                        }
-                    }
-                    //Tao config
-                    var dataConfigMapped = this._mapper.Map<FileConfigurationExtension, FileConfiguration>(dataConfig);
-                    var internalConfigurationCreator = httpContext.RequestServices.GetRequiredService<IInternalConfigurationCreator>();
-                    var internalConfiguration = await internalConfigurationCreator.Create(dataConfigMapped);
-                    config = internalConfiguration;
+                    config = await GetConfigInternalAsync(route, key, httpContext, dataConfig);
                 }
                 else
                 {
